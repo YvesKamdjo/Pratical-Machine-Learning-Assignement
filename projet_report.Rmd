@@ -1,0 +1,121 @@
+---
+title: "Prediction Assignment"
+author: "YE"
+date: "19 juin 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+# Analysis plan
+
+To achieve the main goal, which is to predict the "classe" variable, we are going to follow the steps bellow: 
+
+1.  Loading and cleaning data: Remove near zero variables, exclude columns with more than 40% of missing values (NA).
+
+2.  Trial two methods: Random Forest and Gradient Boosted Model(GBM)
+
+3.  Exploration and interpration of the results and choose one of them or combine the two models.
+
+4.  Apply the final on test data set to predict the variable classe.
+
+
+### 1.  Loading and cleaning data
+
+
+```{r}
+library(caret)
+
+trainingCSV <- read.csv('pml-training.csv', na.strings = c("", "NA", "#DIV/0!"))
+
+##Subsetting and Cleaning data set
+
+train_partion <- createDataPartition(y=trainingCSV$classe, p=0.7, list = FALSE)
+
+training <- trainingCSV[train_partion,]
+testing <- trainingCSV[-train_partion,]
+
+##Cleaning: Remove near zero variables with the caret package function nearzero
+
+cols <- nearZeroVar(training)
+training <- training[, -cols]
+
+## exclude columns with more than 30% of missing values
+
+limit <- nrow(training)*0.6
+OkCols <- !apply(training, 2, function(x) sum(is.na(x)) > limit  || sum(x=="") > limit)
+
+training <- training[, OkCols]
+
+#training <- training[, colSums(is.na(training)) < lim]
+
+
+
+```
+
+The trainin set is now ready to be used to build the model.
+
+### 2. Two modeling methods: Random Forest and Gradient Boosted Model(GBM).
+
+```{r}
+
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+fit.rf <- train(classe~., method='rf', data= training, trControl=fitControl)
+
+
+fit.gbm <- train(classe~., method="gbm", data= training, trControl=fitControl) 
+
+pred.gbm <- predict(fit.gbm, newdata=testing)
+pred.rf <- predict(fit.rf, newdata = testing)
+
+confusionMatrix(pred.rf,testing$classe )$overall['Accuracy']
+confusionMatrix(testing$classe, pred.gbm)$overall['Accuracy']
+
+```
+
+The Random Forest has a better accuracy. But it's seems that a combination of the two methods can improve the accuracy.
+
+### 3. Combination on the two models on Random Forest
+
+```{r}
+
+data.stack <- data.frame(pred.rf,pred.gbm, classe = testing$classe)
+fit.stack <- train(classe~., method='rf',data= data.stack)
+
+pred.stack <- predict(fit.stack,newdata=data.stack)
+confusionMatrix(data.stack$classe, pred.stack)$overall['Accuracy']
+
+```
+
+### 4. Apply the final on test data set to predict the variable classe
+
+```{r}
+
+testing <- read.csv('pml-testing.csv', na.strings = c("", "NA", "#DIV/0!"))
+pred.testing <- predict(fit.stack, newdata = testing)
+
+pred.testing
+```
